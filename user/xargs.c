@@ -2,7 +2,7 @@
 #include "user/user.h"
 #include "kernel/param.h"
 
-#define MAXARGSIZE 512
+#define MAXSIZE 512
 
 enum state {
   S_WAIT,         // 等待参数输入，此状态为初始状态或当前字符为空格
@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  char lines[MAXARGSIZE];
+  char lines[MAXSIZE];
   char *p = lines;
   char *args[MAXARG] = {0};
   for (int i=1; i<argc; i++){
@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
       cur_state = transform_state(cur_state, get_char_type(*p));
     }
 
-    if (++arg_end >= MAXARGSIZE){
+    if (++arg_end >= MAXSIZE){
       fprintf(2, "xargs: too many arguments\n");
       exit(1);
     }

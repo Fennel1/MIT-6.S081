@@ -45,6 +45,7 @@ main(int argc, char *argv[])
     // parent
     close(pf_c[0]);
     close(pc_f[1]);
+    
     if (write(pf_c[1], "1", sizeof(char)) != sizeof(char)) {
       fprintf(2, "parent write failed\n");
       exit_code = 1;
