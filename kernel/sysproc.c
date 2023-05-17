@@ -94,7 +94,7 @@ sys_pgaccess(void)
     return -1;
 
   struct proc *p = myproc();
-  if(pgaccess(p->pagetable,start_va,page_num,result_va) < 0)
+  if(pgaccess(p->pagetable, start_va, page_num, result_va) < 0)
     return -1;
 
   return 0;
