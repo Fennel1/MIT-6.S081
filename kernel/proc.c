@@ -182,6 +182,7 @@ freeproc(struct proc *p)
   p->handler = 0;
   p->ticks = 0;
   p->is_alarm = 0;
+  p->alarm_trapframe = 0;
 }
 
 // Create a user page table for a given process,
