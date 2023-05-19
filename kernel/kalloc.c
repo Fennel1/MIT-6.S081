@@ -23,10 +23,16 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct ref_struct {
+  int count[PHYSTOP/PGSIZE];
+  struct spinlock lock;
+} ref;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&ref.lock, "ref");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -35,8 +41,10 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE){
+    ref.count[(uint64)p / PGSIZE] = 1;
     kfree(p);
+  }
 }
 
 // Free the page of physical memory pointed at by v,
@@ -50,6 +58,14 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  acquire(&ref.lock);
+  --ref.count[(uint64)pa/PGSIZE];
+  if (ref.count[(uint64)pa/PGSIZE] > 0) {
+    release(&ref.lock);
+    return;
+  }
+  release(&ref.lock);
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -72,11 +88,76 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
     kmem.freelist = r->next;
+    acquire(&ref.lock);
+    ref.count[(uint64)r/PGSIZE] = 1;
+    release(&ref.lock);
+  }
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+
+int
+cowpage(pagetable_t pagetable, uint64 va){
+  if (va >= MAXVA)
+    return -1;
+  pte_t* pte = walk(pagetable, va, 0);
+  if (pte == 0)
+    return -1;
+  if ((*pte & PTE_V) == 0)
+    return -1;
+  return (*pte & PTE_F) ? 0 : -1;
+}
+
+void* 
+cowalloc(pagetable_t pagetable, uint64 va){
+  if (va % PGSIZE != 0)
+    return 0;
+
+  uint64 pa = walkaddr(pagetable, va);
+  if (pa == 0)
+    return 0;
+  pte_t* pte = walk(pagetable, va, 0);
+
+  if (krefcnt((char*)pa) == 1){
+    *pte |= PTE_W;
+    *pte &= ~PTE_F;
+    return (void*)pa;
+  } else{
+    char* new_pa = kalloc();
+    if (new_pa == 0)
+      return 0;
+    memmove(new_pa, (char*)pa, PGSIZE);
+
+    *pte &= ~PTE_V;
+
+    if (mappages(pagetable, va, PGSIZE, (uint64)new_pa, (PTE_FLAGS(*pte)|PTE_W)&~PTE_F) != 0){
+      kfree(new_pa);
+      *pte |= PTE_V;
+      return 0;
+    }
+    
+    kfree((char*)PGROUNDDOWN(pa));
+    return new_pa;
+  }
+}
+
+int
+krefcnt(void* pa){
+  return ref.count[(uint64)pa/PGSIZE];
+}
+
+int 
+kaddrefcnt(void* pa){
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    return -1;
+  acquire(&ref.lock);
+  ++ref.count[(uint64)pa/PGSIZE];
+  release(&ref.lock);
+  return 0;
 }
