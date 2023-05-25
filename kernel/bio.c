@@ -93,11 +93,9 @@ bget(uint dev, uint blockno)
   }
 
   b = 0;
-  struct buf *tmp;
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  for (int i=bid, cycle=0; cycle!=NBUCKET; i=(i+1)%NBUCKET){
-    ++cycle;
+  for (int i=bid, cycle=0; cycle!=NBUCKET; i=(i+1)%NBUCKET, ++cycle){
     if (i != bid){
       if (!holding(&bcache.buckets[i].lock)){
         acquire(&bcache.buckets[i].lock);
@@ -107,7 +105,7 @@ bget(uint dev, uint blockno)
       }
     }
 
-    for (tmp=bcache.buckets[i].head.next; tmp!=&bcache.buckets[i].head; tmp=tmp->next){
+    for (struct buf *tmp=bcache.buckets[i].head.next; tmp!=&bcache.buckets[i].head; tmp=tmp->next){
       if (tmp->refcnt == 0 && (b==0 || tmp->timestamp < b->timestamp)){
         b = tmp;
       }
@@ -187,7 +185,6 @@ brelse(struct buf *b)
   acquire(&tickslock);
   b->timestamp = ticks;
   release(&tickslock);
-  
   release(&bcache.buckets[bid].lock);
 }
 
